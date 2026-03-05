@@ -34,7 +34,7 @@ class VirtualMachine(models.Model):
     # ── Мультитенантность ────────────────
     organization = models.ForeignKey(
         Organization, 
-        on_delete=models.SET_NULL,  # ← Измени!
+        on_delete=models.SET_NULL,  
         null=True, blank=True,  
         related_name='virtual_machines', verbose_name='Организация'
     )

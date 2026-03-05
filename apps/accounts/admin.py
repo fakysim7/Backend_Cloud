@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, Organization, OrganizationMembership
+from .models import User, Organization, OrganizationMembership, Client, Plan, OrganizationSubscription
 
 
 @admin.register(User)
@@ -26,3 +26,20 @@ class OrganizationMembershipAdmin(admin.ModelAdmin):
     list_display = ['user', 'organization', 'role', 'joined_at']
     list_filter = ['role', 'organization']
     search_fields = ['user__email', 'organization__name']
+
+
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ['full_name', 'email', 'phone', 'position', 'organization']
+    list_filter = ['organization', 'position']
+    search_fields = ['first_name', 'last_name', 'email']
+
+@admin.register(Plan)
+class PlanAdmin(admin.ModelAdmin):
+    list_display = ['name', 'display_name', 'max_projects', 'max_users', 'max_storage_gb', 'monthly_price']
+    list_editable = ['is_active']
+
+@admin.register(OrganizationSubscription)
+class OrganizationSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ['organization', 'plan', 'current_projects', 'is_active', 'expires_at']
+    list_filter = ['plan', 'is_active']

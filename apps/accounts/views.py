@@ -2,13 +2,25 @@ from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+
+
+
 from django.db import transaction
-from .models import Organization, OrganizationMembership, User
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+
+
+from apps.accounts.permissions import IsOrganizationMember
+from .models import (Organization, OrganizationMembership, User,
+                         Client, Plan, OrganizationSubscription, Organization)
 from .serializers import (
     RegisterSerializer, UserSerializer,
     OrganizationSerializer, OrganizationMembershipSerializer,
-    InviteUserSerializer,
+    InviteUserSerializer, ClientSerializer, PlanSerializer,
+    OrganizationSubscriptionSerializer, Organization
 )
+
 from apps.quotas.models import ResourceQuota
 from core.permissions import IsOrganizationAdmin, IsOrganizationOwner
 
@@ -108,3 +120,77 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+class ClientViewSet(ModelViewSet):
+    queryset = Client.objects.select_related('organization')
+    serializer_class = ClientSerializer
+    
+    def get_queryset(self):
+        org = self.request.current_organization
+        return Client.objects.filter(organization=org)
+    
+    def create(self, request):
+        org = request.current_organization
+        data = request.data.copy()
+        data['organization'] = org.id
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+class PlanViewSet(ReadOnlyModelViewSet):
+    queryset = Plan.objects.filter(is_active=True).order_by('monthly_price')
+    serializer_class = PlanSerializer
+    permission_classes = [IsAuthenticated]
+
+class OrganizationSubscriptionViewSet(ModelViewSet):
+    permission_classes = [IsAuthenticated, IsOrganizationMember]
+    
+    def get_queryset(self):
+        org = self.request.current_organization
+        return OrganizationSubscription.objects.filter(organization=org)
+    
+    def create(self, request):
+        org = self.request.current_organization
+        plan_id = request.data.get('plan')
+        
+        plan = get_object_or_404(Plan, id=plan_id, is_active=True)
+        subscription, created = OrganizationSubscription.objects.get_or_create(
+            organization=org,
+            defaults={
+                'plan': plan,
+                'expires_at': timezone.now() + timezone.timedelta(days=30)
+            }
+        )
+        
+        if not created:
+            subscription.plan = plan
+            subscription.is_active = True
+            subscription.expires_at = timezone.now() + timezone.timedelta(days=30)
+            subscription.save()
+        
+        serializer = OrganizationSubscriptionSerializer(subscription)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def usage(self, request):
+        org = self.request.current_organization
+        subscription = OrganizationSubscription.objects.filter(organization=org).first()
+        
+        if not subscription:
+            return Response({'error': 'Подписка не найдена'}, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response({
+            'plan_limits': {
+                'projects': subscription.plan.max_projects,
+                'users': subscription.plan.max_users,
+                'storage_gb': subscription.plan.max_storage_gb
+            },
+            'current_usage': {
+                'projects': subscription.current_projects,
+                'users': subscription.current_users,
+                'storage_gb': subscription.current_storage_gb
+            },
+            'is_over_limit': subscription.is_over_limit
+        })

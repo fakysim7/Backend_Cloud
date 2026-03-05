@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from .models import User, Organization, OrganizationMembership
+from .models import User, Organization, OrganizationMembership, Client, Plan, OrganizationSubscription
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -72,3 +72,31 @@ class InviteUserSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError('Пользователь с таким email не найден.')
         return value
+
+
+
+class ClientSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Client
+        fields = ['id', 'first_name', 'last_name', 'full_name', 'email', 'phone', 'position', 'created_at']
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+class PlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Plan
+        fields = ['id', 'name', 'display_name', 'max_projects', 'max_users', 'max_storage_gb', 'monthly_price', 'annual_price']
+
+class OrganizationSubscriptionSerializer(serializers.ModelSerializer):
+    plan_name = serializers.CharField(source='plan.display_name')
+    is_over_limit = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = OrganizationSubscription
+        fields = ['id', 'plan', 'plan_name', 'current_projects', 'current_users', 'current_storage_gb', 'is_active', 'expires_at', 'is_over_limit']
+    
+    def get_is_over_limit(self, obj):
+        return obj.is_over_limit
