@@ -9,17 +9,17 @@ class TransactionSerializer(serializers.ModelSerializer):
 class UsersDailyStatsSerializer(serializers.ModelSerializer):
     class Meta:
         model = UsersDailyStats
-        fields = ['date', 'users', 'active', 'inactive', 'total']
+        fields = ['date', 'total_users', 'active_users', 'inactive_users']
 
 class DowntimeSerializer(serializers.ModelSerializer):
     class Meta:
         model = DowntimeEvent
-        fields = ['down', 'restored']
+        fields = ['down_at', 'restored_at', 'duration_minutes']
 
 class ResourcePointSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResourcePoint
-        fields = ['time', 'load']
+        fields = ['timestamp', 'load']
 
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:

@@ -4,21 +4,20 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
-
-
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-
 from apps.accounts.permissions import IsOrganizationMember
-from .models import (Organization, OrganizationMembership, User,
-                         Client, Plan, OrganizationSubscription, Organization)
+from .models import (
+    Organization, OrganizationMembership, User,
+    Client, Plan, OrganizationSubscription
+)
 from .serializers import (
     RegisterSerializer, UserSerializer,
     OrganizationSerializer, OrganizationMembershipSerializer,
     InviteUserSerializer, ClientSerializer, PlanSerializer,
-    OrganizationSubscriptionSerializer, Organization
+    OrganizationSubscriptionSerializer
 )
 
 from apps.quotas.models import ResourceQuota
@@ -73,7 +72,9 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='members')
     def members(self, request, pk=None):
         org = self.get_object()
-        qs = OrganizationMembership.objects.filter(organization=org).select_related('user')
+        qs = OrganizationMembership.objects.filter(
+            organization=org
+        ).select_related('user')
         serializer = OrganizationMembershipSerializer(qs, many=True)
         return Response(serializer.data)
 
@@ -82,10 +83,12 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     def invite(self, request, pk=None):
         """Пригласить пользователя по email."""
         org = self.get_object()
-        serializer = InviteUserSerializer(data=request.data, context={'request': request})
+        serializer = InviteUserSerializer(
+            data=request.data, context={'request': request}
+        )
         serializer.is_valid(raise_exception=True)
 
-        user = serializer.instance or User.objects.get(email=serializer.validated_data['email'])
+        user = User.objects.get(email=serializer.validated_data['email'])
         role = serializer.validated_data['role']
 
         membership, created = OrganizationMembership.objects.get_or_create(
@@ -93,7 +96,9 @@ class OrganizationViewSet(viewsets.ModelViewSet):
             defaults={'role': role}
         )
         if not created:
-            return Response({'error': 'Пользователь уже является участником.'}, status=400)
+            return Response(
+                {'error': 'Пользователь уже является участником.'}, status=400
+            )
 
         return Response(OrganizationMembershipSerializer(membership).data, status=201)
 
@@ -104,13 +109,17 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         """Изменить роль или удалить участника."""
         org = self.get_object()
         try:
-            membership = OrganizationMembership.objects.get(id=member_id, organization=org)
+            membership = OrganizationMembership.objects.get(
+                id=member_id, organization=org
+            )
         except OrganizationMembership.DoesNotExist:
             return Response({'error': 'Участник не найден.'}, status=404)
 
         if request.method == 'DELETE':
             if membership.role == OrganizationMembership.Role.OWNER:
-                return Response({'error': 'Нельзя удалить владельца организации.'}, status=400)
+                return Response(
+                    {'error': 'Нельзя удалить владельца организации.'}, status=400
+                )
             membership.delete()
             return Response(status=204)
 
@@ -121,40 +130,43 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         serializer.save()
         return Response(serializer.data)
 
+
 class ClientViewSet(ModelViewSet):
-    queryset = Client.objects.select_related('organization')
     serializer_class = ClientSerializer
-    
+
     def get_queryset(self):
         org = self.request.current_organization
         return Client.objects.filter(organization=org)
-    
-    def create(self, request):
+
+    def create(self, request, *args, **kwargs):
         org = request.current_organization
         data = request.data.copy()
         data['organization'] = org.id
-        
+
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class PlanViewSet(ReadOnlyModelViewSet):
     queryset = Plan.objects.filter(is_active=True).order_by('monthly_price')
     serializer_class = PlanSerializer
     permission_classes = [IsAuthenticated]
 
+
 class OrganizationSubscriptionViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrganizationMember]
-    
+    serializer_class = OrganizationSubscriptionSerializer
+
     def get_queryset(self):
         org = self.request.current_organization
         return OrganizationSubscription.objects.filter(organization=org)
-    
-    def create(self, request):
+
+    def create(self, request, *args, **kwargs):
         org = self.request.current_organization
         plan_id = request.data.get('plan')
-        
+
         plan = get_object_or_404(Plan, id=plan_id, is_active=True)
         subscription, created = OrganizationSubscription.objects.get_or_create(
             organization=org,
@@ -163,34 +175,38 @@ class OrganizationSubscriptionViewSet(ModelViewSet):
                 'expires_at': timezone.now() + timezone.timedelta(days=30)
             }
         )
-        
+
         if not created:
             subscription.plan = plan
             subscription.is_active = True
             subscription.expires_at = timezone.now() + timezone.timedelta(days=30)
             subscription.save()
-        
+
         serializer = OrganizationSubscriptionSerializer(subscription)
-        return Response(serializer.data)
-    
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'])
     def usage(self, request):
         org = self.request.current_organization
-        subscription = OrganizationSubscription.objects.filter(organization=org).first()
-        
+        subscription = OrganizationSubscription.objects.filter(
+            organization=org
+        ).first()
+
         if not subscription:
-            return Response({'error': 'Подписка не найдена'}, status=status.HTTP_404_NOT_FOUND)
-        
+            return Response(
+                {'error': 'Подписка не найдена'}, status=status.HTTP_404_NOT_FOUND
+            )
+
         return Response({
             'plan_limits': {
                 'projects': subscription.plan.max_projects,
                 'users': subscription.plan.max_users,
-                'storage_gb': subscription.plan.max_storage_gb
+                'storage_gb': subscription.plan.max_storage_gb,
             },
             'current_usage': {
                 'projects': subscription.current_projects,
                 'users': subscription.current_users,
-                'storage_gb': subscription.current_storage_gb
+                'storage_gb': subscription.current_storage_gb,
             },
-            'is_over_limit': subscription.is_over_limit
+            'is_over_limit': subscription.is_over_limit,
         })
