@@ -31,6 +31,7 @@ LOCAL_APPS = [
     'apps.quotas',
     'apps.hypervisors',
     'apps.virtual_machines',
+    'apps.projects',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS 
